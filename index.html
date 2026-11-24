@@ -46,6 +46,7 @@ a { color: inherit; }
 .pill { display: inline-flex; align-items: center; gap: 7px; height: 42px; padding: 0 16px; border-radius: 21px; border: 1px solid var(--line); background: rgba(22, 17, 14, .7); backdrop-filter: blur(10px); font-weight: 600; font-size: 15px; }
 .pill:hover { border-color: rgba(255, 240, 225, .35); }
 .pill.icon, .pill.cart { padding: 0; width: 42px; justify-content: center; position: relative; }
+.pill.cart.bump { animation: bump .6s cubic-bezier(.3, 1.6, .5, 1); } @keyframes bump { 35% { transform: scale(1.3) rotate(-8deg); } }
 .pill.cart i { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; border-radius: 10px; background: var(--club); color: #fff; font-style: normal; font-size: 12px; font-weight: 700; display: grid; place-items: center; padding: 0 5px; }
 #bottom { position: fixed; left: 0; right: 0; bottom: 0; z-index: 4; display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 12px; padding: 18px 18px max(18px, env(safe-area-inset-bottom)); pointer-events: none; background: linear-gradient(transparent, rgba(10, 8, 7, .8)); }
 #bottom > * { pointer-events: auto; }
@@ -174,7 +175,7 @@ const VEREINE = {
     fanUebergabe: ['Abholung in der Kantine, Westgasse 67b', 'Am Fanstand beim nächsten Heimspiel'],
     code: 'TEUFEL26', // Vereinscode für den Teamshop (Platzhalter – vom Verein festlegen)
     fan: ['fantrikot', 'fanshirt', 'fanhoodie', 'fanbeutel', 'fanflasche', 'aufkleber'],
-    team: ['heim', 'auswaerts', 'hoodie', 'warmup', 'beutel', 'flasche'],
+    team: ['heim', 'auswaerts', 'hoodie', 'warmup', 'beutel', 'flasche', 'aufkleber'],
   },
   'sv-musterdorf': { // fiktiver Demo-Verein: zeigt die zweite Zahlungsart (über OTB / Shopify)
     name: 'SV Musterdorf', beiname: 'Demo-Verein', kuerzel: 'SVM', wortmarke: 'MUSTERDORF',
@@ -198,6 +199,8 @@ const WERKSTATT = {
   sortiment: ['textshirt', 'texthoodie', 'tasche', 'gravurbrett', 'gravurflasche', 'wandfolie'],
 };
 // Die drei Shops: Fanshop (alle), Teamshop (Spieler:innen/Mitglieder mit Vereinscode), Werkstatt (ohne Vereinsbezug)
+const START_SHOP = 'team'; // bis zum vollen Release startet die Seite im Teamshop (Mannschaftsseite)
+const TEAM_CODE = false; // Vereinscode-Abfrage für den Teamshop erst zum Release einschalten (true)
 const SHOPS = {
   fan: { label: 'Fanshop', icon: 'favorite', fuer: 'Für Fans, Eltern und Familie' },
   team: { label: 'Teamshop', icon: 'groups', fuer: 'Für Spieler:innen und Mitglieder' },
@@ -845,6 +848,16 @@ function sceneKabine(spec) {
   const spots = [];
   const count = Math.max(3, Math.ceil((maxX - minX) / 1.4));
   for (let k = 0; k < count; k++) { const x = minX + 0.4 + k * ((maxX - minX - 0.8) / Math.max(1, count - 1)); const s = new T.SpotLight(0xffd2a1, 0, 9, 0.4, 0.7, 1.4); s.position.set(x, 4.2, 1.1); s.target.position.set(x, 0.9, wallZ); scene.add(s, s.target); spots.push(s); }
+  // sichtbare Lichtkegel der Deckenstrahler und Staub im Licht
+  const coneTex = canvasTex(64, 256, (ctx) => { ctx.clearRect(0, 0, 64, 256); const g = ctx.createLinearGradient(0, 0, 0, 256); g.addColorStop(0, 'rgba(255,214,170,0.6)'); g.addColorStop(0.5, 'rgba(255,214,170,0.18)'); g.addColorStop(1, 'rgba(255,214,170,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 256); });
+  const cones = spots.map((s) => { const a = s.position, b = s.target.position, len = a.distanceTo(b); const m = new T.MeshBasicMaterial({ map: coneTex.tex, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, toneMapped: false });
+    const c = new T.Mesh(new T.CylinderGeometry(0.05, 1.05, len, 48, 1, true), m); c.position.copy(a).add(b).multiplyScalar(0.5); c.lookAt(b); c.rotateX(-Math.PI / 2); scene.add(c); return c; });
+  const ND = 420, dpos = new Float32Array(ND * 3), dseed = new Float32Array(ND);
+  for (let q = 0; q < ND; q++) { dpos[q * 3] = minX - 0.6 + Math.random() * (maxX - minX + 1.2); dpos[q * 3 + 1] = 0.3 + Math.random() * 3.4; dpos[q * 3 + 2] = -1.1 + Math.random() * 2.6; dseed[q] = Math.random() * 100; }
+  const dgeo = new T.BufferGeometry(); dgeo.setAttribute('position', new T.BufferAttribute(dpos, 3));
+  const dustTex = canvasTex(64, 64, (ctx) => { ctx.clearRect(0, 0, 64, 64); const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,240,220,1)'); g.addColorStop(1, 'rgba(255,240,220,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64); });
+  const dmat = new T.PointsMaterial({ size: 0.02, map: dustTex.tex, transparent: true, opacity: 0, depthWrite: false, blending: T.AdditiveBlending, color: 0xffdcb8 });
+  scene.add(new T.Points(dgeo, dmat));
   const key = new T.SpotLight(0xffe3c2, 0, 12, 0.36, 0.85, 1.2); key.position.set(1.6, 4.4, 3.2); key.castShadow = true; key.shadow.mapSize.set(2048, 2048); key.shadow.radius = 3; key.shadow.bias = -0.0003; key.shadow.normalBias = 0.02; scene.add(key, key.target);
   const rim = new T.DirectionalLight(0xffc9a0, 0); rim.position.set(-2, 3.4, -2.6); scene.add(rim);
   const front = new T.DirectionalLight(0xdde6ff, 0); front.position.set(-3, 2, 5); scene.add(front);
@@ -858,6 +871,12 @@ function sceneKabine(spec) {
   const baseRy = (i) => (ARTIKEL[ids[i]].rueck ? Math.PI : 0);
   const st = ids.map((_, i) => { const s = newHang(0, baseRy(i)); s.vsz = imRegal[i] ? 0 : (Math.random() - 0.5) * 1.2; return s; });
   let scroll = 0, scrollT = 0, pan = 0, panT = 0, hov = -1, hovLift = ids.map(() => 0), dim = 0, intro = spec.intro ? 0 : 1;
+  // Einzug: Bügel gleiten nacheinander vom Stangenende an ihren Platz, Regalteile springen ins Fach
+  let eT = 0; const eBase = spec.intro ? (spec.schnell ? 0.35 : 1.2) : 0.05;
+  const eStart = ids.map((_, i) => (imRegal[i] ? eBase + nr * 0.16 + 0.15 + regIdx.indexOf(i) * 0.2 : eBase + railIdx.indexOf(i) * 0.16));
+  const eDone = ids.map(() => false), spin = ids.map(() => 0), popT = ids.map(() => 1);
+  let flyI = -1, flyT = 0, flyFrom = null, pulse = 0;
+  const backOut = (x) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
   let sel = -1, prog = 0, progT = 0, rot = 0, vel = 0, goal = null, lastDrag = 0;
   const hand = handTracker(); const lookY = () => (cam.aspect < 1 ? 1.74 : 1.5);
   const hoch = () => cam.aspect < 1;
@@ -872,7 +891,7 @@ function sceneKabine(spec) {
   };
   const flicker = (t, s0) => { const u = t - s0; if (u < 0) return 0; if (u > 0.55) return 1; return (Math.sin(u * 90) > 0.2 || u > 0.4) ? 0.7 + u * 0.5 : 0.05; };
   let introT = 0, lightSnd = -1;
-  ids.forEach((_, i) => { if (!imRegal[i]) st[i].x = xOf(i); });
+  ids.forEach((_, i) => { if (!imRegal[i]) st[i].x = railC - railHalf + 0.14 + railIdx.indexOf(i) * 0.03; }); // Start: alle Bügel am linken Stangenende
   if (nr) pan = panT = clamp(railC, minX + 0.45, maxX - 0.45) * 0; // Handy startet mittig; seitlich wischen schwenkt zum Regal
   const api = {
     scene, camera: cam, pickables: piv, spec,
@@ -893,24 +912,37 @@ function sceneKabine(spec) {
       const tx = pan + (GL.ptr.inside && sel < 0 ? GL.ptr.nx * 0.12 : 0), ty = (GL.ptr.inside && sel < 0 ? GL.ptr.ny * 0.05 : 0);
       cam.position.x += (tx - cam.position.x) * damp(2, dt); cam.position.y += (camY - pe * 0.12 + ty - cam.position.y) * damp(3, dt); cam.position.z = camZ - pe * 0.5;
       cam.lookAt(cam.position.x * 0.6 + pan * 0.4 + pe * (dp.x - cam.position.x) * 0.25, lookY() - pe * 0.08, 0);
+      // Einzugsuhr, Lichtkegel und Staub
+      if (!spec.intro || S.eingetreten) eT += dt;
+      cones.forEach((c, k) => { c.material.opacity = 0.075 * (spots[k].intensity / 0.95); });
+      dmat.opacity = 0.6 * all * (1 - dim * 0.5);
+      if (motion()) { for (let q = 0; q < ND; q++) { const sd = dseed[q]; dpos[q * 3] += Math.sin(t * 0.3 + sd) * 0.0009; dpos[q * 3 + 1] += dt * 0.03 + Math.sin(t * 0.7 + sd * 1.3) * 0.0006; dpos[q * 3 + 2] += Math.cos(t * 0.25 + sd) * 0.0007; if (dpos[q * 3 + 1] > 3.7) dpos[q * 3 + 1] = 0.3; } dgeo.attributes.position.needsUpdate = true; }
+      ids.forEach((_, i) => { if (!eDone[i] && eT >= eStart[i]) { eDone[i] = true; ton(imRegal[i] ? 'klick' : 'klirr'); } });
       // Stange verschieben (Bügel gleiten nach)
       scroll += (scrollT - scroll) * damp(5, dt);
       const H = hand(cam, railZ + 0.15, dt); const [nsub, h] = substeps(dt);
       for (let k = 0; k < nsub; k++) railIdx.forEach((i) => {
         if (i === sel) return; const s = st[i];
         const F = sel < 0 ? handForce(s.x, H, railY - 1.0, railY + 0.1, 0.32) : null;
-        integrate(s, { x: xOf(i), ry: baseRy(i) + (i === hov ? (H.P ? clamp((H.P.x - s.x) * 0.8, -0.35, 0.35) : 0) : 0) }, h, F);
+        const tx = eDone[i] ? xOf(i) : railC - railHalf + 0.14 + railIdx.indexOf(i) * 0.03;
+        integrate(s, { x: tx, ry: baseRy(i) + (i === hov ? (H.P ? clamp((H.P.x - s.x) * 0.8, -0.35, 0.35) : 0) : 0) }, h, F);
+        if (sel < 0 && motion()) { s.vsz += Math.sin(t * 0.6 + i * 1.9) * 0.24 * h; s.vsx += Math.sin(t * 0.45 + i * 2.7) * 0.12 * h; } // leichter Luftzug
       });
       dim += ((sel >= 0 ? 1 : 0) - dim) * damp(4, dt);
       piv.forEach((p, i) => {
         hovLift[i] += ((i === hov && sel < 0 ? 1 : 0) - hovLift[i]) * damp(8, dt);
-        if (i === sel || (i === api._back && prog > 0)) return;
-        if (imRegal[i]) { // im Regal: beim Drüberfahren leicht anheben und zur Hand drehen
-          const hm = home[i], hl = hovLift[i]; p.position.set(hm.x, hm.y + hl * 0.03, hm.z + hl * 0.05);
+        if (i === sel || i === flyI || (i === api._back && prog > 0)) return;
+        if (popT[i] < 1) popT[i] = Math.min(1, popT[i] + dt / 0.5);
+        if (imRegal[i]) { // im Regal: springt beim Einzug ins Fach, hebt sich beim Drüberfahren, Flasche dreht sich
+          const ein = eDone[i] ? clamp((eT - eStart[i]) / 0.55, 0, 1) : 0; p.visible = ein > 0;
+          const hm = home[i], hl = hovLift[i]; p.position.set(hm.x, hm.y + hl * 0.03 + (1 - ein) * 0.28, hm.z + hl * 0.05);
+          p.scale.setScalar(Math.max(0.001, backOut(ein) * backOut(popT[i])));
           const want = i === hov && H.P ? clamp((H.P.x - hm.x) * 0.9, -0.4, 0.4) : 0; st[i].ry += (want - st[i].ry) * damp(4, dt);
-          p.rotation.set(hm.rx * (1 - hl), st[i].ry, 0); return;
+          if (i === hov && ARTIKEL[ids[i]].art === 'flasche') spin[i] += dt * 2.2; else spin[i] += (Math.round(spin[i] / (2 * Math.PI)) * 2 * Math.PI - spin[i]) * damp(3, dt);
+          p.rotation.set(hm.rx * (1 - hl) - hl * 0.06, st[i].ry + spin[i] + (1 - ein) * 1.2, 0); return;
         }
         const s = st[i]; p.position.set(s.x, railY + 0.055 + hovLift[i] * 0.035, railZ + hovLift[i] * 0.06);
+        p.scale.setScalar(Math.max(0.001, backOut(popT[i])));
         p.rotation.set(s.sx, s.ry, s.sz);
       });
       // Herunternehmen: anheben, im Bogen nach vorne, zur Kamera drehen
@@ -919,17 +951,26 @@ function sceneKabine(spec) {
       if (j >= 0 && j != null) {
         const p = piv[j], s = st[j], a0 = start(j); const e = ease(clamp(prog, 0, 1)); const lift = Math.sin(Math.PI * clamp(prog * 1.15, 0, 1)) * (imRegal[j] ? 0.12 : 0.22);
         const yZiel = imRegal[j] ? dp.y - 0.15 : dp.y;
-        p.position.set(a0.x + (dp.x - a0.x) * e, a0.y + (yZiel - a0.y) * e + lift, a0.z + (dp.z - a0.z) * e);
+        p.position.set(a0.x + (dp.x - a0.x) * e, a0.y + (yZiel - a0.y) * e + lift + Math.sin(t * 1.4) * 0.014 * e, a0.z + (dp.z - a0.z) * e);
+        pulse *= Math.exp(-dt * 5); p.scale.setScalar(1 + 0.045 * pulse * e);
         if (goal !== null) { vel += (34 * (goal - rot) - 10 * vel) * dt; if (Math.abs(goal - rot) < 0.002 && Math.abs(vel) < 0.02) goal = null; }
         else if (!GL.ptr.down || nowS() - lastDrag > 0.15) { vel *= Math.exp(-dt * 2.2); if (sel >= 0 && motion() && Math.abs(vel) < 0.15 && nowS() - lastDrag > 3) vel += (0.18 - vel) * damp(0.5, dt); }
         rot += vel * dt;
         const ry0 = baseRy(j); p.rotation.set(a0.rx * (1 - e) + Math.sin(t * 1.3) * 0.015 * e, ry0 + (rot - ry0) * e, Math.sin(t * 0.9) * 0.02 * e + (1 - e) * s.sz);
         if (sel < 0 && prog < 0.003) { api._back = null; ton(imRegal[j] ? 'klick' : 'klirr'); }
       }
+      // In den Warenkorb: Teil fliegt nach rechts oben und schrumpft, taucht dann wieder auf seinem Platz auf
+      if (flyI >= 0) {
+        flyT += dt; const e = clamp(flyT / 0.6, 0, 1), q = e * e, p = piv[flyI];
+        const r = new T.Vector3(1, 0, 0).applyQuaternion(cam.quaternion), u = new T.Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
+        p.position.copy(flyFrom).addScaledVector(r, q * 1.7).addScaledVector(u, q * 1.1); p.position.z += q * 0.9;
+        p.rotation.y += dt * 10; p.scale.setScalar(Math.max(0.01, 1 - e));
+        if (e >= 1) { popT[flyI] = 0; p.scale.setScalar(0.001); flyI = -1; }
+      }
       // Fokusstrahler folgt dem Teil unter der Hand bzw. dem heruntergenommenen Teil
       const fx = j >= 0 && j != null && prog > 0.05 ? piv[j].position.x : hov >= 0 ? (imRegal[hov] ? home[hov].x : st[hov].x) : cam.position.x;
       key.target.position.x += (fx - key.target.position.x) * damp(4, dt); key.target.position.y = 1.3; key.target.position.z = sel >= 0 ? 0.8 : railZ;
-      key.position.x = key.target.position.x + 1.4;
+      key.position.x = key.target.position.x + 1.4; key.intensity += pulse * 1.2;
     },
     hover(id) { const i = id == null ? -1 : ids.indexOf(id); if (i !== hov) { hov = i; if (i >= 0 && sel < 0) ton(imRegal[i] ? 'klick' : 'klirr'); } },
     drag(dx) {
@@ -950,6 +991,8 @@ function sceneKabine(spec) {
       if (sel >= 0) { AKT.schliessen(); return; }
       AKT.oeffnen(id);
     },
+    pulse() { pulse = 1; },
+    toCart() { if (sel < 0) return; flyI = sel; flyT = 0; flyFrom = piv[sel].position.clone(); sel = -1; progT = 0; prog = 0; api._back = null; ton('wusch'); },
     takeDown(id) { const i = ids.indexOf(id); if (i < 0) return; api._back = null; sel = i; progT = 1; rot = baseRy(i); vel = 0; goal = Math.round(rot / (2 * Math.PI)) * 2 * Math.PI; ton('wusch'); },
     putBack() { if (sel < 0) return; api._back = sel; st[sel].ry = imRegal[sel] ? 0 : baseRy(sel); sel = -1; progT = 0; goal = baseRy(api._back) + Math.round((rot - baseRy(api._back)) / (2 * Math.PI)) * 2 * Math.PI; ton('zurueck'); },
     face(seite) { if (sel < 0) return; const ziel = seite === 'hinten' ? Math.PI : 0; const k = Math.round((rot - ziel) / (2 * Math.PI)); goal = k * 2 * Math.PI + ziel; },
@@ -978,7 +1021,7 @@ function setzeShop(shop) {
 }
 const sortiment = () => (S.shop === 'werkstatt' ? WERKSTATT.sortiment : S.shop === 'team' ? CLUB.team : CLUB.fan);
 const persAktiv = () => (S.shop === 'team' ? S.spieler || {} : {});
-const zugang = () => LS.get('zugang:' + S.verein, false);
+const zugang = () => !TEAM_CODE || LS.get('zugang:' + S.verein, false);
 const speichern = () => { LS.set('spieler:' + S.verein, S.spieler); LS.set(cartKey(), S.cart); };
 const $ = (s) => document.querySelector(s);
 const summe = () => S.cart.reduce((a, c) => a + c.preis * c.menge, 0);
@@ -1181,7 +1224,7 @@ function zeichneQR(b) {
 
 // Live-Vorschau: Eingaben färben sofort das 3D-Teil
 const persForm = () => { const sp = persAktiv(); return { ...sp, name: S.form.name ?? sp.name, nummer: S.form.nummer ?? sp.nummer, fanNr: S.form.fanNr, text: S.form.text, farbe: S.form.farbe, motiv: S.form.motiv }; };
-function live() { const i = sortiment().indexOf(S.sel); if (i >= 0 && GL.cur?.pickables) GL.cur.pickables[i].userData.refresh(descFor(S.sel, persForm())); }
+function live() { const i = sortiment().indexOf(S.sel); if (i >= 0 && GL.cur?.pickables) { GL.cur.pickables[i].userData.refresh(descFor(S.sel, persForm())); GL.cur.pulse?.(); } }
 function bindLive() {
   const upd = () => {
     const n = $('#fName'), r = $('#fNr'), fn = $('#fFanNr'), tx = $('#fText');
@@ -1227,7 +1270,9 @@ const AKT = {
       (a.pers === 'gravur' || a.pers === 'frei') && text && `„${text.replace(/\s*\|\s*/g, ' / ')}“`, a.pers === 'frei' && farbName, f.motivName && `Motiv: ${f.motivName}`].filter(Boolean).join(' · ');
     const key = [id, groesse, name, nummer, f.fanNr, text, f.farbe, f.motivName].join('|'); const vorh = S.cart.find((c) => c.key === key);
     if (vorh) vorh.menge++; else S.cart.push({ key, id, titel: a.titel, preis: a.preis, menge: 1, info });
-    speichern(); ton('klick'); AKT.schliessen(); kopf(); toast(`${a.titel} liegt im Warenkorb`);
+    speichern(); ton('klick');
+    S.sel = null; S.form = {}; zeigeDetail(); if (GL.cur?.toCart) GL.cur.toCart(); else GL.cur?.putBack?.(); setTimeout(() => GL.cur?.refresh?.(id), 650);
+    kopf(); setTimeout(() => { const c = document.querySelector('.pill.cart'); c?.classList.add('bump'); setTimeout(() => c?.classList.remove('bump'), 650); }, 450); toast(`${a.titel} liegt im Warenkorb`);
   },
   plus(el) { S.cart[+el.dataset.i].menge++; speichern(); kopf(); zeigeSheet(); },
   minus(el) { const c = S.cart[+el.dataset.i]; c.menge--; if (c.menge <= 0) S.cart.splice(+el.dataset.i, 1); speichern(); kopf(); zeigeSheet(); },
@@ -1282,7 +1327,7 @@ function eintreten(mitTon) {
 }
 function start() {
   const q = new URLSearchParams(location.search); vereinAus(q.get('verein') || 'fc-kapellerfeld');
-  let shop = q.get('shop') || 'fan'; if (shop === 'team' && !zugang()) { shop = 'fan'; S.wartetAufCode = true; }
+  let shop = q.get('shop') || START_SHOP; if (shop === 'team' && !zugang()) { shop = 'fan'; S.wartetAufCode = true; }
   setzeShop(shop);
   document.title = `${CLUB.name} · Shop`;
   $('#loader .lname').textContent = VC.name; $('#loader .lcrest').innerHTML = logoHTML('lg');
