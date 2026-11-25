@@ -104,6 +104,12 @@ code { font-size: 13px; background: var(--field); padding: 1px 5px; border-radiu
 #toast.on { opacity: 1; transform: translate(-50%, 0); }
 .vereine-link { position: fixed; z-index: 4; right: 18px; bottom: 76px; font-size: 12px; color: var(--mut); background: none; border: 0; opacity: .55; }
 .vereine-link:hover { opacity: 1; }
+body.werkstatt-seite .vereine-link { display: none; }
+a.tab { text-decoration: none; }
+.tab.werkstatt-link { margin-left: 6px; border: 1px solid rgba(224, 160, 58, .55); color: #f0c27a; }
+.tab.werkstatt-link:hover { background: rgba(224, 160, 58, .14); color: #ffd79a; }
+.tab.werkstatt-link .ms:last-child { font-size: 14px; opacity: .8; }
+.tabs.werk .tab.on { background: #e0a03a; color: #16120f; }
 /* Ladebildschirm */
 #loader { position: fixed; inset: 0; z-index: 20; background: var(--bg); display: grid; place-items: center; text-align: center; transition: opacity .9s ease, visibility .9s; }
 body.drin #loader { opacity: 0; visibility: hidden; }
@@ -131,6 +137,7 @@ body.drin #loader { opacity: 0; visibility: hidden; }
   .vereine-link { bottom: 84px; }
   body.detail-open #bottom { opacity: 0; pointer-events: none; }
   body.detail-open .tabs, body.sheet-open .tabs { opacity: 0; pointer-events: none; }
+  .tab.werkstatt-link { margin-left: 0; } .tab.werkstatt-link .otb, .tab.werkstatt-link .ms:last-child { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { #detail, #sheet, #loader, .enter, #toast { transition: none; } }
 </style>
@@ -200,6 +207,9 @@ const WERKSTATT = {
   sortiment: ['textshirt', 'texthoodie', 'tasche', 'gravurbrett', 'gravurflasche', 'wandfolie'],
 };
 // Die drei Shops: Fanshop (alle), Teamshop (Spieler:innen/Mitglieder mit Vereinscode), Werkstatt (ohne Vereinsbezug)
+// Die OTB Werkstatt ist ein eigener Shop unter /werkstatt (lokal: ?seite=werkstatt); im Vereinsshop führt ein Knopf dorthin
+const WERKSTATT_SEITE = /\/werkstatt\/?$/.test(location.pathname) || /[?&](seite|shop)=werkstatt/.test(location.search);
+const werkstattUrl = () => (location.protocol.startsWith('http') ? '/werkstatt' : location.pathname + '?seite=werkstatt');
 const START_SHOP = 'team'; // bis zum vollen Release startet die Seite im Teamshop (Mannschaftsseite)
 const TEAM_CODE = false; // Vereinscode-Abfrage für den Teamshop erst zum Release einschalten (true)
 const SHOPS = {
@@ -1099,7 +1109,7 @@ function kopf() {
   const anz = S.cart.reduce((a, c) => a + c.menge, 0);
   $('#top').innerHTML = `
     <div class="brand">${logoHTML()}<div><b>${esc(VC.name)}</b><span>${esc(SHOPS[S.shop].label)} · ${esc(SHOPS[S.shop].fuer)} · <em class="demo">Demo</em></span></div></div>
-    <nav class="tabs" aria-label="Shop wählen">${Object.entries(SHOPS).map(([k, v]) => `<button class="tab ${k === S.shop ? 'on' : ''}" data-a="shop" data-s="${k}" aria-pressed="${k === S.shop}"><span class="ms sm">${v.icon}</span>${esc(v.label)}${k === 'team' && !zugang() ? ' <span class="ms sm lock">lock</span>' : ''}</button>`).join('')}</nav>
+    ${WERKSTATT_SEITE ? `<nav class="tabs werk" aria-label="OTB Werkstatt"><span class="tab on"><span class="ms sm">handyman</span>Druck · Folie · Gravur</span></nav>` : `<nav class="tabs" aria-label="Shop wählen">${Object.entries(SHOPS).filter(([k]) => k !== 'werkstatt').map(([k, v]) => `<button class="tab ${k === S.shop ? 'on' : ''}" data-a="shop" data-s="${k}" aria-pressed="${k === S.shop}"><span class="ms sm">${v.icon}</span>${esc(v.label)}${k === 'team' && !zugang() ? ' <span class="ms sm lock">lock</span>' : ''}</button>`).join('')}<a class="tab werkstatt-link" href="${werkstattUrl()}" title="Eigener Shop: Druck, Folie und Gravur ohne Vereinsbezug"><span class="ms sm">handyman</span><span class="otb">OTB </span>Werkstatt<span class="ms sm">open_in_new</span></a></nav>`}
     <div class="topbtns">
       <button class="pill" data-a="konto" title="${VC.zahlung.art === 'verein' ? 'Kontoverbindung des Vereins' : 'So bezahlst du'}"><span class="ms">${VC.zahlung.art === 'verein' ? 'account_balance' : 'credit_card'}</span><span class="lbl">${VC.zahlung.art === 'verein' ? 'Konto & Zahlung' : 'Zahlung'}</span></button>
       <button class="pill icon" data-a="ton" aria-label="Ton ${S.ton ? 'aus' : 'an'}"><span class="ms">${S.ton ? 'volume_up' : 'volume_off'}</span></button>
@@ -1267,7 +1277,7 @@ const AKT = {
   konto() { AKT.schliessen(true); S.sheet = 'konto'; zeigeSheet(); },
   korb() { AKT.schliessen(true); S.sheet = 'korb'; zeigeSheet(); },
   spieler() { AKT.schliessen(true); S.sheet = 'spieler'; zeigeSheet(); },
-  shop(el) { const s = el.dataset.s; if (s === S.shop) return; if (s === 'team' && !zugang()) { AKT.schliessen(true); S.sheet = 'code'; return zeigeSheet(); } wechsle(s); },
+  shop(el) { const s = el.dataset.s; if (s === 'werkstatt') { location.href = werkstattUrl(); return; } if (s === S.shop) return; if (s === 'team' && !zugang()) { AKT.schliessen(true); S.sheet = 'code'; return zeigeSheet(); } wechsle(s); },
   codeOk() { const c = ($('#cCode').value || '').trim().toUpperCase(); if (c !== String(CLUB.code).toUpperCase()) { $('#cErr').textContent = 'Dieser Code passt nicht. Bitte bei Trainer:in oder Zeugwart nachfragen.'; return; } LS.set('zugang:' + S.verein, true); S.sheet = null; wechsle('team'); },
   farbe(el) { S.form.farbe = el.dataset.c; el.parentElement.querySelectorAll('.swatch').forEach((c) => c.classList.toggle('on', c === el)); live(); ton('klick'); },
   vereine() { AKT.schliessen(true); S.sheet = 'vereine'; zeigeSheet(); },
@@ -1335,7 +1345,7 @@ function neuerVerein() {
 
 function wechsle(shop) {
   AKT.schliessen(true); setzeShop(shop); S.sheet = null; render(); baueKabine(true, true); ton('licht');
-  try { const u = new URL(location.href); u.searchParams.set('shop', S.shop); history.replaceState(null, '', u); } catch (e) {}
+  try { if (!WERKSTATT_SEITE) { const u = new URL(location.href); u.searchParams.set('shop', S.shop); history.replaceState(null, '', u); } } catch (e) {}
   if (shop === 'team' && !S.spieler) setTimeout(() => toast('Tipp: Unten den Namen eintragen – dann hängt alles schon personalisiert da'), 3500);
 }
 
@@ -1349,8 +1359,10 @@ function eintreten(mitTon) {
 function start() {
   const q = new URLSearchParams(location.search); vereinAus(q.get('verein') || 'fc-kapellerfeld');
   let shop = q.get('shop') || START_SHOP; if (shop === 'team' && !zugang()) { shop = 'fan'; S.wartetAufCode = true; }
+  if (WERKSTATT_SEITE) shop = 'werkstatt', S.wartetAufCode = false; else if (shop === 'werkstatt') shop = START_SHOP;
   setzeShop(shop);
-  document.title = `${CLUB.name} · Shop`;
+  if (WERKSTATT_SEITE) { document.body.classList.add('werkstatt-seite'); try { document.querySelector('meta[name=theme-color]').content = '#0a0807'; } catch (e) {} }
+  document.title = WERKSTATT_SEITE ? 'OTB Werkstatt · Druck · Folie · Gravur (Demo)' : `${CLUB.name} · Shop (Demo)`;
   $('#loader .lname').textContent = VC.name; $('#loader .lcrest').innerHTML = logoHTML('lg');
   render(); glInit();
   const num = $('#loader .count'); let shown = 0; const t0 = performance.now();
